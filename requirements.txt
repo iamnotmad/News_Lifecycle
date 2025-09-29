@@ -1,0 +1,13 @@
+pandas
+numpy
+python-dateutil
+vaderSentiment
+matplotlib
+plotly
+streamlit
+networkx
+praw
+snscrape
+google-api-python-client
+instaloader
+nrclex
