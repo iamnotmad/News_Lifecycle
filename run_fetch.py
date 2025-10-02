@@ -46,8 +46,8 @@ except Exception as e:
 try:
     if YOUTUBE_KEY:
         print("Fetching YouTube…")
-        yt_df = fetch_youtube_comments(YOUTUBE_KEY, QUERY, START, END, max_videos=10, max_comments=300)
-        # yt_df = fetch_youtube_videos(YOUTUBE_KEY, QUERY, START, END, max_videos=25)  # <- if comments 403 often
+        yt_df = fetch_youtube_comments(YOUTUBE_KEY, QUERY, START, END, max_videos=10, max_comments_per_video=300)
+        #yt_df = fetch_youtube_videos(YOUTUBE_KEY, QUERY, START, END, max_videos=25)  # <- if comments 403 often
         print(f"  YouTube rows: {len(yt_df)}")
         yt_df.to_csv("data/youtube_raw.csv", index=False)
         dfs.append(yt_df)
@@ -86,21 +86,32 @@ combined = add_sentiment(combined)
 combined = add_emotions(combined)
 
 # ---- Save outputs
-combined.to_csv("data/combined_with_emotions.csv", index=False)
+# ---- Save outputs ----
+# Full dataset with emotions
+combined.to_csv("data/combined_with_emotions.csv", index=False, encoding="utf-8-sig")
 
+# Slim dataset for inspection / sharing
 combined[[
     "platform","post_id","author","created_at","content",
     "like_count","reply_count","share_count","url",
     "sentiment_pos","sentiment_neu","sentiment_neg","sentiment_compound"
-]].to_csv("data/combined.csv", index=False)
+]].to_csv("data/combined.csv", index=False, encoding="utf-8-sig")
 
+# Daily aggregates
 daily = aggregate_daily(combined)
-daily.to_csv("data/daily.csv", index=False)
+daily.to_csv("data/daily.csv", index=False, encoding="utf-8-sig")
 
+# Daily emotion aggregates
 daily_emo = aggregate_emotions_daily(combined)
-daily_emo.to_csv("data/daily_emotions.csv", index=False)
+daily_emo.to_csv("data/daily_emotions.csv", index=False, encoding="utf-8-sig")
 
+# ---- Report summary ----
 print("Wrote:")
 for f in ["combined.csv","combined_with_emotions.csv","daily.csv","daily_emotions.csv"]:
     p = os.path.join("data", f)
-    print(f"  - {p} ({len(pd.read_csv(p))} rows)")
+    try:
+        nrows = len(pd.read_csv(p, encoding="utf-8-sig"))
+        print(f"  - {p} ({nrows} rows)")
+    except Exception as e:
+        print(f"  - {p} (size unknown; read error {e})")
+

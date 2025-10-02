@@ -71,7 +71,8 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
 def combine_and_clean(dfs: List[pd.DataFrame]) -> pd.DataFrame:
     """
     Combine per-platform frames into a single unified frame and de-duplicate.
-    Keys for de-duplication: (platform, post_id) then fallback to url.
+    Keys for de-duplication: (platform, post_id). Fallback de-dup by URL
+    only for platforms where URL is unique per item (not YouTube comments unless &lc is present).
     """
     if not dfs:
         return pd.DataFrame(columns=REQUIRED_COLS)
@@ -82,18 +83,41 @@ def combine_and_clean(dfs: List[pd.DataFrame]) -> pd.DataFrame:
 
     combined = pd.concat(normed, ignore_index=True)
 
-    # De-dupe by platform+post_id
-    combined = combined.sort_values("created_at").drop_duplicates(
-        subset=["platform", "post_id"], keep="first"
+    # Drop rows with invalid timestamps
+    dt = pd.to_datetime(combined["created_at"], errors="coerce", utc=True)
+    combined = combined.loc[~dt.isna()].copy()
+    combined["created_at"] = dt.dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Normalize content a bit
+    combined["content"] = (
+        combined["content"]
+        .astype(str)
+        .str.replace(r"\s+", " ", regex=True)
+        .str.strip()
     )
 
-    # Fallback de-dupe by url
-    combined = combined.drop_duplicates(subset=["url"], keep="first")
+    # Primary de-dup by platform+post_id
+    combined = (
+        combined.sort_values("created_at")
+                .drop_duplicates(subset=["platform", "post_id"], keep="first")
+    )
 
-    # Final type normalizations (again, safe)
+    # Conservative URL fallback (avoid collapsing distinct YouTube comments)
+    # Keep only if URL looks unique (e.g., Reddit permalinks, YouTube with &lc=)
+    mask_unique_url = ~(
+        (combined["platform"].str.lower() == "youtube") &
+        (~combined["url"].str.contains(r"[?&]lc=", regex=True))
+    )
+    dedupe_url = combined.loc[mask_unique_url]
+    keep_url = dedupe_url.drop_duplicates(subset=["url"], keep="first").index
+    combined = combined.loc[
+        combined.index.difference(dedupe_url.index).union(keep_url)
+    ]
+
+    # Final schema/order
     combined = _ensure_columns(combined)
-
     return combined.reset_index(drop=True)
+
 
 
 def add_sentiment(df: pd.DataFrame) -> pd.DataFrame:
